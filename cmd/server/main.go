@@ -4,28 +4,41 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
-	"github.com/karthikbhandary2/chat/internal/db"
+	"github.com/jackc/pgx/v5/pgxpool"
+	db "github.com/karthikbhandary2/chat/internal/db/sqlc"
 	"github.com/karthikbhandary2/chat/internal/handlers"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Println("no .env file found, relying on real environment variables")
+	}
 	ctx := context.Background()
 
-	pool, err := db.NewPool(ctx)
+	connPool, err := pgxpool.New(ctx, os.Getenv("DB_URL"))
 	if err != nil {
-		log.Fatalf("Error connecting to database: %v", err)
+		log.Fatal("cannot connect to db:", err)
 	}
-	defer pool.Close()
+	if err := connPool.Ping(ctx); err != nil {
+		log.Fatal("db ping failed: ", err)
+	}
+
+	store := db.NewStore(connPool)
+	h := handlers.NewHandler(store)
 
 	r := chi.NewRouter()
 	r.Use(chiMiddleware.Logger)
 	r.Use(chiMiddleware.Recoverer)
 
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Get("/health", handlers.Health)
+		r.Get("/health", h.Health)
+		r.Post("/register", h.Register)
+		r.Post("/login", h.Login)
 	})
 	log.Println("starting server on port: 8082")
 	log.Fatal(http.ListenAndServe(":8082", r))

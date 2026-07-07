@@ -10,27 +10,13 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
-  # backend:
-  #   build: ./backend
-  #   environment:
-  #     DB_USER: chat
-  #     DB_PASS: secret
-  #     DB_HOST: postgres
-  #     DB_PORT: 5432
-  #     DB_NAME: chat
-  #   ports:
-  #     - "8080:8080"
-  #   depends_on:
-  #     - postgres
   redis:
     image: redis:7-alpine
-    ports: 
+    ports:
       - "6379:6379"
     volumes:
       - redisdata:/data
     command: redis-server --appendonly yes
-    
-
 
 volumes:
   pgdata:
