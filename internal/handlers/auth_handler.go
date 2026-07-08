@@ -7,8 +7,11 @@ import (
 	"net/http"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/karthikbhandary2/chat/internal/auth"
 	db "github.com/karthikbhandary2/chat/internal/db/sqlc"
+	"github.com/karthikbhandary2/chat/internal/middleware"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -24,6 +27,15 @@ type RegisterRequest struct {
 type LoginRequest struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required,min=8"`
+}
+
+type LoginResponse struct {
+	Token string       `json:"token"`
+	User  UserResponse `json:"user"`
+}
+
+type MeResponse struct {
+	ID string `json:"id"`
 }
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
@@ -48,10 +60,10 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user, err := h.Store.CreateUser(r.Context(), db.CreateUserParams{
-		Username:       s.Username,
-		Email:          s.Email,
+		Username:     s.Username,
+		Email:        s.Email,
 		PasswordHash: string(hashPassword),
-		FullName:       s.FullName,
+		FullName:     s.FullName,
 	})
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -69,7 +81,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
-	var l LoginRequest 
+	var l LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&l); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
@@ -93,12 +105,50 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid email or password", http.StatusUnauthorized)
 		return
 	}
+
+	token, err := auth.GenerateToken(user.ID.String())
+	if err != nil {
+		log.Println("generate token error: ", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	lr := LoginResponse{
+		Token: token,
+		User:  toUserResponse(user),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(lr)
+}
+
+func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
+	idStr, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		log.Println("invalid user id in token:", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	user, err := h.Store.GetUserByID(r.Context(), id)
+	if err != nil {
+		log.Println("get user by id error:", err)
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(toUserResponse(user))
 }
 
 func checkPassword(hashedPassword, password string) bool {
-    err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
-    return err == nil
+	err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
+	return err == nil
 }
