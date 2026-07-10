@@ -42,11 +42,11 @@ func (s *Server) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := &Client{
-		conn: conn,
+		conn:   conn,
 		userID: userID,
-		send: make(chan []byte),
-		hub: s.hub,
-	}	
+		send:   make(chan []byte),
+		hub:    s.hub,
+	}
 
 	s.hub.register <- client
 

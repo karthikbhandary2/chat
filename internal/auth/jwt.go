@@ -13,10 +13,10 @@ var secretKey = []byte(os.Getenv("JWT_SECRET"))
 func GenerateToken(userID string) (string, error) {
 	// create token with claims i.e userid and expiry
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256,
-	jwt.MapClaims{
-		"userID": userID,
-		"exp": time.Now().Add(time.Hour * 12).Unix(),
-	})
+		jwt.MapClaims{
+			"userID": userID,
+			"exp":    time.Now().Add(time.Hour * 12).Unix(),
+		})
 
 	// sign the token with the secret key
 	tokenString, err := token.SignedString(secretKey)
@@ -26,7 +26,7 @@ func GenerateToken(userID string) (string, error) {
 	return tokenString, nil
 }
 
-func ValidateToken(tokenString string) (userID string, err error){
+func ValidateToken(tokenString string) (userID string, err error) {
 	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signature method %v", t.Header["alg"])

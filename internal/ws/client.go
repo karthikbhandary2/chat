@@ -1,11 +1,14 @@
 package ws
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	db "github.com/karthikbhandary2/chat/internal/db/sqlc"
 )
 
 type Client struct {
@@ -32,12 +35,42 @@ func (c *Client) readPump() {
 			log.Println("error unmarshaling json:", err)
 			continue
 		}
-		message := &Message{
-			RecipientID: incoming.RecipientID,
-			Content:     []byte(incoming.Content),
+
+		senderID, err := uuid.Parse(c.userID)
+		if err != nil {
+			log.Println("invalid sender id:", err)
+			continue
 		}
-		c.hub.broadcast <- *message
-		log.Printf("message from %s to %s: %s", c.userID, incoming.RecipientID, incoming.Content)
+
+		isParticipant, err := c.hub.store.IsParticipant(context.Background(), db.IsParticipantParams{
+			ConversationID: incoming.ConversationID,
+			UserID:         senderID,
+		})
+
+		if err != nil {
+			log.Println("error checking participant:", err)
+			continue
+		}
+		if !isParticipant {
+			log.Printf("user %s is not a participant of conversation %s", c.userID, incoming.ConversationID)
+			continue
+		}
+
+		message, err := c.hub.store.CreateMessage(context.Background(), db.CreateMessageParams{
+			ConversationID: incoming.ConversationID,
+			SenderID:       senderID,
+			Content:        incoming.Content,
+		})
+		if err != nil {
+			log.Println("error creating message:", err)
+			continue
+		}
+
+		c.hub.broadcast <- Message{
+			ConversationID: message.ConversationID,
+			SenderID:       message.SenderID,
+			Content:        []byte(message.Content),
+		}
 	}
 
 }

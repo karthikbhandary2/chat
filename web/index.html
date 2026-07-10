@@ -15,7 +15,7 @@
     input { padding: 6px; background:#2a2a2a; border:1px solid #444; color:#eee; }
     #token { width: 100%; margin-bottom: 8px; box-sizing: border-box; }
     .row { display: flex; gap: 8px; margin-bottom: 8px; }
-    #recipient { width: 260px; }
+    #conversation { width: 260px; }
     #message { flex: 1; }
     button { padding: 6px 12px; background:#2a2a2a; color:#eee; border:1px solid #555; cursor:pointer; }
     button:disabled { opacity: 0.5; cursor: default; }
@@ -35,9 +35,9 @@
 
   <div id="log"></div>
 
-  <label>Recipient user ID (UUID)</label>
+  <label>Conversation ID (UUID)</label>
   <div class="row">
-    <input type="text" id="recipient" placeholder="recipient_id (UUID)" disabled />
+    <input type="text" id="conversation" placeholder="conversation_id (UUID)" disabled />
   </div>
 
   <label>Message</label>
@@ -50,7 +50,7 @@
     let ws = null;
     const log = document.getElementById('log');
     const tokenInput = document.getElementById('token');
-    const recipientInput = document.getElementById('recipient');
+    const conversationInput = document.getElementById('conversation');
     const messageInput = document.getElementById('message');
     const connectBtn = document.getElementById('connectBtn');
     const disconnectBtn = document.getElementById('disconnectBtn');
@@ -78,7 +78,7 @@
         addLog('[connected]', 'system');
         connectBtn.disabled = true;
         disconnectBtn.disabled = false;
-        recipientInput.disabled = false;
+        conversationInput.disabled = false;
         messageInput.disabled = false;
         sendBtn.disabled = false;
       };
@@ -108,29 +108,29 @@
     });
 
     function sendMessage() {
-      const recipientId = recipientInput.value.trim();
+      const conversationId = conversationInput.value.trim();
       const text = messageInput.value.trim();
 
-      if (!recipientId) {
-        alert('Enter a recipient user ID first');
+      if (!conversationId) {
+        alert('Enter a conversation ID first');
         return;
       }
       if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
 
       const payload = JSON.stringify({
-        recipient_id: recipientId,
+        conversation_id: conversationId,
         content: text
       });
 
       ws.send(payload);
-      addLog('sent -> ' + text, 'sent');
+      addLog('sent -> conversation ' + conversationId + ': ' + text, 'sent');
       messageInput.value = '';
     }
 
     function resetButtons() {
       connectBtn.disabled = false;
       disconnectBtn.disabled = true;
-      recipientInput.disabled = true;
+      conversationInput.disabled = true;
       messageInput.disabled = true;
       sendBtn.disabled = true;
     }

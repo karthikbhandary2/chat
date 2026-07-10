@@ -1,6 +1,8 @@
 package ws
 
+import "github.com/google/uuid"
+
 type IncomingMessage struct {
-	RecipientID string `json:"recipient_id"`
-	Content     string `json:"content"`
+	ConversationID uuid.UUID `json:"conversation_id"`
+	Content        string    `json:"content"`
 }

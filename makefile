@@ -8,5 +8,7 @@ sqlc:
 	sqlc generate
 run:
 	go run cmd/server/main.go
+fmt:
+	go fmt ./...
 
-.PHONY: migrateup migratedown sqlc run
+.PHONY: migrateup migratedown sqlc run fmt

@@ -9,6 +9,26 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Conversation struct {
+	ID        uuid.UUID          `json:"id"`
+	Type      string             `json:"type"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type ConversationParticipant struct {
+	ConversationID uuid.UUID          `json:"conversation_id"`
+	UserID         uuid.UUID          `json:"user_id"`
+	JoinedAt       pgtype.Timestamptz `json:"joined_at"`
+}
+
+type Message struct {
+	ID             uuid.UUID          `json:"id"`
+	ConversationID uuid.UUID          `json:"conversation_id"`
+	SenderID       uuid.UUID          `json:"sender_id"`
+	Content        string             `json:"content"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
 type User struct {
 	ID           uuid.UUID          `json:"id"`
 	Username     string             `json:"username"`

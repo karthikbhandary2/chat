@@ -11,10 +11,16 @@ import (
 )
 
 type Querier interface {
+	AddParticipant(ctx context.Context, arg AddParticipantParams) (ConversationParticipant, error)
+	CreateConversation(ctx context.Context, type_ string) (Conversation, error)
+	CreateMessage(ctx context.Context, arg CreateMessageParams) (Message, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	GetConversationMessages(ctx context.Context, arg GetConversationMessagesParams) ([]Message, error)
+	GetConversationParticipants(ctx context.Context, conversationID uuid.UUID) ([]uuid.UUID, error)
 	GetUser(ctx context.Context, username string) (User, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
+	IsParticipant(ctx context.Context, arg IsParticipantParams) (bool, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 }
 

@@ -24,12 +24,11 @@ var interruptSignals = []os.Signal{
 	syscall.SIGINT,
 }
 
-
 func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("no .env file found, relying on real environment variables")
 	}
-	
+
 	ctx, stop := signal.NotifyContext(context.Background(), interruptSignals...)
 	defer stop()
 
@@ -44,7 +43,7 @@ func main() {
 	store := db.NewStore(connPool)
 	h := handlers.NewHandler(store)
 
-	hub := ws.NewHub()
+	hub := ws.NewHub(store)
 	go hub.Run()
 
 	r := chi.NewRouter()
