@@ -58,6 +58,7 @@ func main() {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.AuthMiddleware)
 			r.Get("/me", h.Me)
+			r.Get("/conversations/{id}/messages", h.GetConversation)
 		})
 	})
 	webserver := ws.NewServer(hub)
@@ -65,5 +66,4 @@ func main() {
 	r.Handle("/*", http.FileServer(http.Dir("./web")))
 	log.Println("starting server on port: 8082")
 	log.Fatal(http.ListenAndServe(":8082", r))
-
 }

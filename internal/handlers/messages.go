@@ -22,10 +22,11 @@ func (h *Handler) GetConversation(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "conversation not found", http.StatusNotFound)
 		return
 	}
+
 	uID, ok := middleware.GetUserID(r.Context())
 	if !ok {
 		log.Println("missing user id in context")
-		http.Error(w, "user not found", http.StatusNotFound)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 	userID, err := uuid.Parse(uID)
@@ -34,17 +35,19 @@ func (h *Handler) GetConversation(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	yes, err := h.Store.IsParticipant(r.Context(), db.IsParticipantParams{
+
+	isParticipant, err := h.Store.IsParticipant(r.Context(), db.IsParticipantParams{
 		ConversationID: conversationID,
 		UserID:         userID,
 	})
 	if err != nil {
-		log.Println("Is participant error:", err)
-		http.Error(w, "participant not found", http.StatusNotFound)
+		log.Println("is participant error:", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	if !yes {
-		http.Error(w, "not authorized", http.StatusForbidden)
+	if !isParticipant {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
 	}
 
 	beforeStr := r.URL.Query().Get("before")
@@ -59,15 +62,24 @@ func (h *Handler) GetConversation(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	limit := r.URL.Query().Get("limit")
-	Limit, err := strconv.Atoi(limit)
-	if err != nil {
-		log.Println("string to int conversion error", err)
+	limitStr := r.URL.Query().Get("limit")
+	limit := 50
+	if limitStr != "" {
+		parsed, err := strconv.Atoi(limitStr)
+		if err != nil {
+			http.Error(w, "invalid limit parameter", http.StatusBadRequest)
+			return
+		}
+		limit = parsed
 	}
+	if limit > 100 {
+		limit = 100
+	}
+
 	messages, err := h.Store.GetConversationMessages(r.Context(), db.GetConversationMessagesParams{
 		ConversationID: conversationID,
 		CreatedAt:      pgtype.Timestamptz{Time: before, Valid: true},
-		Limit:          int32(Limit),
+		Limit:          int32(limit),
 	})
 	if err != nil {
 		log.Println("get conversation messages error:", err)
@@ -78,5 +90,4 @@ func (h *Handler) GetConversation(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(messages)
-
 }
