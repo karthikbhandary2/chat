@@ -15,6 +15,7 @@ import (
 	db "github.com/karthikbhandary2/chat/internal/db/sqlc"
 	"github.com/karthikbhandary2/chat/internal/handlers"
 	"github.com/karthikbhandary2/chat/internal/middleware"
+	"github.com/karthikbhandary2/chat/internal/redisclient"
 	"github.com/karthikbhandary2/chat/internal/ws"
 )
 
@@ -40,10 +41,15 @@ func main() {
 		log.Fatal("db ping failed: ", err)
 	}
 
+	redisClient, err := redisclient.NewClient(os.Getenv("REDIS_URL"))
+	if err != nil {
+		log.Fatal("cannot connect to redis: ", err)
+	}
+
 	store := db.NewStore(connPool)
 	h := handlers.NewHandler(store)
 
-	hub := ws.NewHub(store)
+	hub := ws.NewHub(store, redisClient)
 	go hub.Run()
 
 	r := chi.NewRouter()
