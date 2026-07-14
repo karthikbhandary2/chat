@@ -47,7 +47,7 @@ func main() {
 	}
 
 	store := db.NewStore(connPool)
-	h := handlers.NewHandler(store)
+	h := handlers.NewHandler(store, redisClient)
 
 	hub := ws.NewHub(store, redisClient)
 	go hub.Run()
@@ -65,6 +65,7 @@ func main() {
 			r.Use(middleware.AuthMiddleware)
 			r.Get("/me", h.Me)
 			r.Get("/conversations/{id}/messages", h.GetConversation)
+			r.Get("/users/{id}/presence", h.GetPresence)
 		})
 	})
 	webserver := ws.NewServer(hub)

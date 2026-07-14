@@ -4,10 +4,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	db "github.com/karthikbhandary2/chat/internal/db/sqlc"
+	"github.com/redis/go-redis/v9"
 )
 
 type Handler struct {
-	Store db.Store
+	Store       db.Store
+	RedisClient *redis.Client
 }
 
 type UserResponse struct {
@@ -28,6 +30,9 @@ func toUserResponse(u db.User) UserResponse {
 	}
 }
 
-func NewHandler(store db.Store) *Handler {
-	return &Handler{Store: store}
+func NewHandler(store db.Store, redisClient *redis.Client) *Handler {
+	return &Handler{
+		Store:       store,
+		RedisClient: redisClient,
+	}
 }
