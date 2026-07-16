@@ -30,49 +30,99 @@ func (c *Client) readPump() {
 			log.Println("read error:", err)
 			break
 		}
-		var incoming IncomingMessage
-		if err = json.Unmarshal(msg, &incoming); err != nil {
-			log.Println("error unmarshaling json:", err)
+
+		var envelope Envelope
+		if err := json.Unmarshal(msg, &envelope); err != nil {
+			log.Println("error unmarshaling envelope:", err)
 			continue
 		}
 
-		senderID, err := uuid.Parse(c.userID)
-		if err != nil {
-			log.Println("invalid sender id:", err)
-			continue
-		}
-
-		isParticipant, err := c.hub.store.IsParticipant(context.Background(), db.IsParticipantParams{
-			ConversationID: incoming.ConversationID,
-			UserID:         senderID,
-		})
-
-		if err != nil {
-			log.Println("error checking participant:", err)
-			continue
-		}
-		if !isParticipant {
-			log.Printf("user %s is not a participant of conversation %s", c.userID, incoming.ConversationID)
-			continue
-		}
-
-		message, err := c.hub.store.CreateMessage(context.Background(), db.CreateMessageParams{
-			ConversationID: incoming.ConversationID,
-			SenderID:       senderID,
-			Content:        incoming.Content,
-		})
-		if err != nil {
-			log.Println("error creating message:", err)
-			continue
-		}
-
-		c.hub.broadcast <- Message{
-			ConversationID: message.ConversationID,
-			SenderID:       message.SenderID,
-			Content:        []byte(message.Content),
+		switch envelope.Type {
+		case "message":
+			c.handleChatMessage(msg)
+		case "typing":
+			c.handleTypingEvent(msg)
+		default:
+			log.Println("unknown message type:", envelope.Type)
 		}
 	}
+}
 
+func (c *Client) handleChatMessage(raw []byte) {
+	var incoming IncomingMessage
+	if err := json.Unmarshal(raw, &incoming); err != nil {
+		log.Println("error unmarshaling json:", err)
+		return
+	}
+
+	senderID, err := uuid.Parse(c.userID)
+	if err != nil {
+		log.Println("invalid sender id:", err)
+		return
+	}
+
+	isParticipant, err := c.hub.store.IsParticipant(context.Background(), db.IsParticipantParams{
+		ConversationID: incoming.ConversationID,
+		UserID:         senderID,
+	})
+	if err != nil {
+		log.Println("error checking participant:", err)
+		return
+	}
+	if !isParticipant {
+		log.Printf("user %s is not a participant of conversation %s", c.userID, incoming.ConversationID)
+		return
+	}
+
+	message, err := c.hub.store.CreateMessage(context.Background(), db.CreateMessageParams{
+		ConversationID: incoming.ConversationID,
+		SenderID:       senderID,
+		Content:        incoming.Content,
+	})
+	if err != nil {
+		log.Println("error creating message:", err)
+		return
+	}
+
+	c.hub.broadcast <- Message{
+		ConversationID: message.ConversationID,
+		SenderID:       message.SenderID,
+		Content:        []byte(message.Content),
+	}
+}
+
+func (c *Client) handleTypingEvent(raw []byte) {
+	var typing TypingEvent
+	if err := json.Unmarshal(raw, &typing); err != nil {
+		log.Println("error unmarshaling typing event:", err)
+		return
+	}
+
+	senderID, err := uuid.Parse(c.userID)
+	if err != nil {
+		log.Println("invalid sender id:", err)
+		return
+	}
+
+	outgoing, err := json.Marshal(struct {
+		Type           string    `json:"type"`
+		ConversationID uuid.UUID `json:"conversation_id"`
+		UserID         string    `json:"user_id"`
+	}{
+		Type:           "typing",
+		ConversationID: typing.ConversationID,
+		UserID:         c.userID,
+	})
+	if err != nil {
+		log.Println("error marshaling typing event:", err)
+		return
+	}
+
+	c.hub.broadcast <- Message{
+		ConversationID: typing.ConversationID,
+		SenderID:       senderID,
+		Content:        outgoing,
+	}
 }
 
 func (c *Client) writePump() {
