@@ -9,13 +9,16 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	db "github.com/karthikbhandary2/chat/internal/db/sqlc"
+	"golang.org/x/time/rate"
+	"log/slog"
 )
 
 type Client struct {
-	conn   *websocket.Conn
-	userID string
-	send   chan []byte
-	hub    *Hub
+	conn    *websocket.Conn
+	userID  string
+	send    chan []byte
+	hub     *Hub
+	limiter *rate.Limiter
 }
 
 func (c *Client) readPump() {
@@ -49,9 +52,20 @@ func (c *Client) readPump() {
 }
 
 func (c *Client) handleChatMessage(raw []byte) {
+
+	if !c.limiter.Allow() {
+		log.Printf("rate limit exceeded for user %s", c.userID)
+		return
+	}
+
 	var incoming IncomingMessage
 	if err := json.Unmarshal(raw, &incoming); err != nil {
 		log.Println("error unmarshaling json:", err)
+		return
+	}
+
+	if len(incoming.Content) == 0 || len(incoming.Content) > 2000 {
+		log.Printf("invalid message length from user %s", c.userID)
 		return
 	}
 
@@ -80,7 +94,7 @@ func (c *Client) handleChatMessage(raw []byte) {
 		Content:        incoming.Content,
 	})
 	if err != nil {
-		log.Println("error creating message:", err)
+		slog.Error("error creating message", "user_id", c.userID, "error", err)
 		return
 	}
 

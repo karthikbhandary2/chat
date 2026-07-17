@@ -3,9 +3,11 @@ package ws
 import (
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/karthikbhandary2/chat/internal/auth"
+	"golang.org/x/time/rate"
 )
 
 type Server struct {
@@ -42,10 +44,11 @@ func (s *Server) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := &Client{
-		conn:   conn,
-		userID: userID,
-		send:   make(chan []byte),
-		hub:    s.hub,
+		conn:    conn,
+		userID:  userID,
+		send:    make(chan []byte),
+		hub:     s.hub,
+		limiter: rate.NewLimiter(rate.Every(time.Second), 5), // 5 messages/sec burst, refilling at 1/sec
 	}
 
 	s.hub.register <- client

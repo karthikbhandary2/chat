@@ -25,3 +25,6 @@ SET password_hash = COALESCE(sqlc.narg(hashed_password), hashed_password),
     email = COALESCE(sqlc.narg(email), email)
 WHERE username = sqlc.arg(username)
 RETURNING *;
+
+-- name: GetUserByUsername :one
+SELECT * FROM users WHERE username = $1;

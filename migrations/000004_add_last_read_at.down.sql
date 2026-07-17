@@ -1,0 +1,1 @@
+ALTER TABLE conversation_participant DROP COLUMN last_read_at;

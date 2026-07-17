@@ -31,3 +31,29 @@ SELECT EXISTS (
 -- name: GetConversationParticipants :many
 SELECT user_id FROM conversation_participant
 WHERE conversation_id = $1;
+
+-- name: GetUnreadCount :one
+SELECT COUNT(*) FROM message m
+JOIN conversation_participant cp ON cp.conversation_id = m.conversation_id
+WHERE m.conversation_id = $1
+  AND cp.user_id = $2
+  AND m.created_at > cp.last_read_at;
+
+-- name: MarkAsRead :exec
+UPDATE conversation_participant
+SET last_read_at = now()
+WHERE conversation_id = $1 AND user_id = $2;
+
+-- name: SearchMessages :many
+SELECT m.* FROM message m
+JOIN conversation_participant cp ON cp.conversation_id = m.conversation_id
+WHERE cp.user_id = $1
+  AND m.content_tsv @@ plainto_tsquery('english', $2)
+ORDER BY m.created_at DESC
+LIMIT $3;
+
+-- name: ListUserConversations :many
+SELECT c.* FROM conversation c
+JOIN conversation_participant cp ON cp.conversation_id = c.id
+WHERE cp.user_id = $1
+ORDER BY c.created_at DESC;

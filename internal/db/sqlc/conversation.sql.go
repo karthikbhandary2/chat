@@ -15,7 +15,7 @@ import (
 const addParticipant = `-- name: AddParticipant :one
 INSERT INTO conversation_participant (conversation_id, user_id)
 VALUES ($1, $2)
-RETURNING conversation_id, user_id, joined_at
+RETURNING conversation_id, user_id, joined_at, last_read_at
 `
 
 type AddParticipantParams struct {
@@ -26,7 +26,12 @@ type AddParticipantParams struct {
 func (q *Queries) AddParticipant(ctx context.Context, arg AddParticipantParams) (ConversationParticipant, error) {
 	row := q.db.QueryRow(ctx, addParticipant, arg.ConversationID, arg.UserID)
 	var i ConversationParticipant
-	err := row.Scan(&i.ConversationID, &i.UserID, &i.JoinedAt)
+	err := row.Scan(
+		&i.ConversationID,
+		&i.UserID,
+		&i.JoinedAt,
+		&i.LastReadAt,
+	)
 	return i, err
 }
 
@@ -46,7 +51,7 @@ func (q *Queries) CreateConversation(ctx context.Context, type_ string) (Convers
 const createMessage = `-- name: CreateMessage :one
 INSERT INTO message (conversation_id, sender_id, content)
 VALUES ($1, $2, $3)
-RETURNING id, conversation_id, sender_id, content, created_at
+RETURNING id, conversation_id, sender_id, content, created_at, content_tsv
 `
 
 type CreateMessageParams struct {
@@ -64,12 +69,13 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 		&i.SenderID,
 		&i.Content,
 		&i.CreatedAt,
+		&i.ContentTsv,
 	)
 	return i, err
 }
 
 const getConversationMessages = `-- name: GetConversationMessages :many
-SELECT id, conversation_id, sender_id, content, created_at FROM message
+SELECT id, conversation_id, sender_id, content, created_at, content_tsv FROM message
 WHERE conversation_id = $1
   AND created_at < $2
 ORDER BY created_at DESC
@@ -97,6 +103,7 @@ func (q *Queries) GetConversationMessages(ctx context.Context, arg GetConversati
 			&i.SenderID,
 			&i.Content,
 			&i.CreatedAt,
+			&i.ContentTsv,
 		); err != nil {
 			return nil, err
 		}
@@ -133,6 +140,26 @@ func (q *Queries) GetConversationParticipants(ctx context.Context, conversationI
 	return items, nil
 }
 
+const getUnreadCount = `-- name: GetUnreadCount :one
+SELECT COUNT(*) FROM message m
+JOIN conversation_participant cp ON cp.conversation_id = m.conversation_id
+WHERE m.conversation_id = $1
+  AND cp.user_id = $2
+  AND m.created_at > cp.last_read_at
+`
+
+type GetUnreadCountParams struct {
+	ConversationID uuid.UUID `json:"conversation_id"`
+	UserID         uuid.UUID `json:"user_id"`
+}
+
+func (q *Queries) GetUnreadCount(ctx context.Context, arg GetUnreadCountParams) (int64, error) {
+	row := q.db.QueryRow(ctx, getUnreadCount, arg.ConversationID, arg.UserID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const isParticipant = `-- name: IsParticipant :one
 SELECT EXISTS (
     SELECT 1
@@ -152,4 +179,89 @@ func (q *Queries) IsParticipant(ctx context.Context, arg IsParticipantParams) (b
 	var is_participant bool
 	err := row.Scan(&is_participant)
 	return is_participant, err
+}
+
+const listUserConversations = `-- name: ListUserConversations :many
+SELECT c.id, c.type, c.created_at FROM conversation c
+JOIN conversation_participant cp ON cp.conversation_id = c.id
+WHERE cp.user_id = $1
+ORDER BY c.created_at DESC
+`
+
+func (q *Queries) ListUserConversations(ctx context.Context, userID uuid.UUID) ([]Conversation, error) {
+	rows, err := q.db.Query(ctx, listUserConversations, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Conversation{}
+	for rows.Next() {
+		var i Conversation
+		if err := rows.Scan(&i.ID, &i.Type, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markAsRead = `-- name: MarkAsRead :exec
+UPDATE conversation_participant
+SET last_read_at = now()
+WHERE conversation_id = $1 AND user_id = $2
+`
+
+type MarkAsReadParams struct {
+	ConversationID uuid.UUID `json:"conversation_id"`
+	UserID         uuid.UUID `json:"user_id"`
+}
+
+func (q *Queries) MarkAsRead(ctx context.Context, arg MarkAsReadParams) error {
+	_, err := q.db.Exec(ctx, markAsRead, arg.ConversationID, arg.UserID)
+	return err
+}
+
+const searchMessages = `-- name: SearchMessages :many
+SELECT m.id, m.conversation_id, m.sender_id, m.content, m.created_at, m.content_tsv FROM message m
+JOIN conversation_participant cp ON cp.conversation_id = m.conversation_id
+WHERE cp.user_id = $1
+  AND m.content_tsv @@ plainto_tsquery('english', $2)
+ORDER BY m.created_at DESC
+LIMIT $3
+`
+
+type SearchMessagesParams struct {
+	UserID         uuid.UUID `json:"user_id"`
+	PlaintoTsquery string    `json:"plainto_tsquery"`
+	Limit          int32     `json:"limit"`
+}
+
+func (q *Queries) SearchMessages(ctx context.Context, arg SearchMessagesParams) ([]Message, error) {
+	rows, err := q.db.Query(ctx, searchMessages, arg.UserID, arg.PlaintoTsquery, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Message{}
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.ID,
+			&i.ConversationID,
+			&i.SenderID,
+			&i.Content,
+			&i.CreatedAt,
+			&i.ContentTsv,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

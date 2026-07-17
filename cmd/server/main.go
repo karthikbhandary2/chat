@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	db "github.com/karthikbhandary2/chat/internal/db/sqlc"
@@ -55,6 +56,12 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(chiMiddleware.Logger)
 	r.Use(chiMiddleware.Recoverer)
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:5173"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Content-Type", "Authorization"},
+		AllowCredentials: false,
+	}))
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", h.Health)
@@ -66,6 +73,12 @@ func main() {
 			r.Get("/me", h.Me)
 			r.Get("/conversations/{id}/messages", h.GetConversation)
 			r.Get("/users/{id}/presence", h.GetPresence)
+			r.Get("/conversations/{id}/unread", h.GetUnreadCount)
+			r.Post("/conversations/{id}/read", h.MarkAsRead)
+			r.Get("/messages/search", h.SearchMessages)
+			r.Post("/conversations", h.CreateConversation)
+			r.Get("/conversations", h.ListConversations)
+			r.Get("/users/by-username/{username}", h.GetUserByUsername)
 		})
 	})
 	webserver := ws.NewServer(hub)

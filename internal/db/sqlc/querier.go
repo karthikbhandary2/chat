@@ -17,10 +17,15 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	GetConversationMessages(ctx context.Context, arg GetConversationMessagesParams) ([]Message, error)
 	GetConversationParticipants(ctx context.Context, conversationID uuid.UUID) ([]uuid.UUID, error)
+	GetUnreadCount(ctx context.Context, arg GetUnreadCountParams) (int64, error)
 	GetUser(ctx context.Context, username string) (User, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
+	GetUserByUsername(ctx context.Context, username string) (User, error)
 	IsParticipant(ctx context.Context, arg IsParticipantParams) (bool, error)
+	ListUserConversations(ctx context.Context, userID uuid.UUID) ([]Conversation, error)
+	MarkAsRead(ctx context.Context, arg MarkAsReadParams) error
+	SearchMessages(ctx context.Context, arg SearchMessagesParams) ([]Message, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 }
 

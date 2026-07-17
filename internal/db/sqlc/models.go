@@ -19,6 +19,7 @@ type ConversationParticipant struct {
 	ConversationID uuid.UUID          `json:"conversation_id"`
 	UserID         uuid.UUID          `json:"user_id"`
 	JoinedAt       pgtype.Timestamptz `json:"joined_at"`
+	LastReadAt     pgtype.Timestamptz `json:"last_read_at"`
 }
 
 type Message struct {
@@ -27,6 +28,7 @@ type Message struct {
 	SenderID       uuid.UUID          `json:"sender_id"`
 	Content        string             `json:"content"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	ContentTsv     interface{}        `json:"content_tsv"`
 }
 
 type User struct {

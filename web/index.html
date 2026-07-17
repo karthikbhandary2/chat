@@ -48,6 +48,7 @@
 
   <script>
     let ws = null;
+    let typingTimeout = null;
     const log = document.getElementById('log');
     const tokenInput = document.getElementById('token');
     const conversationInput = document.getElementById('conversation');
@@ -66,10 +67,7 @@
 
     connectBtn.addEventListener('click', () => {
       const token = tokenInput.value.trim();
-      if (!token) {
-        alert('Paste a token first');
-        return;
-      }
+      if (!token) { alert('Paste a token first'); return; }
 
       const wsUrl = `ws://localhost:8082/ws?token=${encodeURIComponent(token)}`;
       ws = new WebSocket(wsUrl);
@@ -84,6 +82,15 @@
       };
 
       ws.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed.type === 'typing') {
+            addLog(`[typing] ${parsed.user_id} is typing in ${parsed.conversation_id}`, 'system');
+            return;
+          }
+        } catch (e) {
+          // not JSON — plain chat content, fall through
+        }
         addLog('received: ' + event.data, 'received');
       };
 
@@ -98,33 +105,36 @@
       };
     });
 
-    disconnectBtn.addEventListener('click', () => {
-      if (ws) ws.close();
-    });
+    disconnectBtn.addEventListener('click', () => { if (ws) ws.close(); });
 
     sendBtn.addEventListener('click', sendMessage);
     messageInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') sendMessage();
+      if (e.key === 'Enter') { sendMessage(); return; }
+      sendTypingEvent();
     });
 
     function sendMessage() {
       const conversationId = conversationInput.value.trim();
       const text = messageInput.value.trim();
-
-      if (!conversationId) {
-        alert('Enter a conversation ID first');
-        return;
-      }
+      if (!conversationId) { alert('Enter a conversation ID first'); return; }
       if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
 
       const payload = JSON.stringify({
+        type: 'message',
         conversation_id: conversationId,
         content: text
       });
-
       ws.send(payload);
       addLog('sent -> conversation ' + conversationId + ': ' + text, 'sent');
       messageInput.value = '';
+    }
+
+    function sendTypingEvent() {
+      const conversationId = conversationInput.value.trim();
+      if (!conversationId || !ws || ws.readyState !== WebSocket.OPEN) return;
+      if (typingTimeout) return;
+      ws.send(JSON.stringify({ type: 'typing', conversation_id: conversationId }));
+      typingTimeout = setTimeout(() => { typingTimeout = null; }, 2000);
     }
 
     function resetButtons() {
