@@ -10,7 +10,6 @@ import (
 	"github.com/gorilla/websocket"
 	db "github.com/karthikbhandary2/chat/internal/db/sqlc"
 	"golang.org/x/time/rate"
-	"log/slog"
 )
 
 type Client struct {
@@ -52,12 +51,6 @@ func (c *Client) readPump() {
 }
 
 func (c *Client) handleChatMessage(raw []byte) {
-
-	if !c.limiter.Allow() {
-		log.Printf("rate limit exceeded for user %s", c.userID)
-		return
-	}
-
 	var incoming IncomingMessage
 	if err := json.Unmarshal(raw, &incoming); err != nil {
 		log.Println("error unmarshaling json:", err)
@@ -94,14 +87,34 @@ func (c *Client) handleChatMessage(raw []byte) {
 		Content:        incoming.Content,
 	})
 	if err != nil {
-		slog.Error("error creating message", "user_id", c.userID, "error", err)
+		log.Println("error creating message:", err)
+		return
+	}
+
+	outgoing, err := json.Marshal(struct {
+		Type           string    `json:"type"`
+		ID             uuid.UUID `json:"id"`
+		ConversationID uuid.UUID `json:"conversation_id"`
+		SenderID       uuid.UUID `json:"sender_id"`
+		Content        string    `json:"content"`
+		CreatedAt      string    `json:"created_at"`
+	}{
+		Type:           "message",
+		ID:             message.ID,
+		ConversationID: message.ConversationID,
+		SenderID:       message.SenderID,
+		Content:        message.Content,
+		CreatedAt:      message.CreatedAt.Time.Format(time.RFC3339),
+	})
+	if err != nil {
+		log.Println("error marshaling outgoing message:", err)
 		return
 	}
 
 	c.hub.broadcast <- Message{
 		ConversationID: message.ConversationID,
 		SenderID:       message.SenderID,
-		Content:        []byte(message.Content),
+		Content:        outgoing,
 	}
 }
 
