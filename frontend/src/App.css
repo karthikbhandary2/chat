@@ -163,7 +163,7 @@ input {
   padding: 0;
 }
 
-/* ---- chat screen ---- */
+/* ---- chat screen shell ---- */
 
 .chat-screen {
   height: 100%;
@@ -178,6 +178,7 @@ input {
   padding: 12px 20px;
   border-bottom: 1px solid var(--line);
   background: var(--panel);
+  flex-shrink: 0;
 }
 
 .topbar-left { display: flex; align-items: center; gap: 10px; }
@@ -189,20 +190,7 @@ input {
   font-size: 14px;
 }
 
-.topbar-status {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text-dim);
-  text-transform: lowercase;
-}
-
 .topbar-right { display: flex; align-items: center; gap: 14px; }
-
-.me {
-  font-family: var(--mono);
-  font-size: 12.5px;
-  color: var(--text-dim);
-}
 
 .ghost-btn {
   background: transparent;
@@ -216,60 +204,193 @@ input {
 
 .ghost-btn:hover { border-color: var(--signal); color: var(--text); }
 
-.session-bar {
+.chat-body {
+  flex: 1;
   display: flex;
-  gap: 24px;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel-raised);
-  flex-wrap: wrap;
+  min-height: 0;
 }
 
-.session-field { display: flex; flex-direction: column; gap: 4px; min-width: 200px; }
+/* ---- sidebar ---- */
 
-.session-field label {
+.sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+}
+
+.sidebar-title {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--text-dim);
   text-transform: lowercase;
+  letter-spacing: 0.04em;
 }
 
-.session-field input {
+.icon-btn {
+  background: var(--panel-raised);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 5px;
+  width: 22px;
+  height: 22px;
+  line-height: 1;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.icon-btn:hover { border-color: var(--signal); color: var(--signal); }
+
+.new-convo-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 16px 12px;
+}
+
+.new-convo-form input {
   background: var(--ink);
   border: 1px solid var(--line);
   border-radius: 5px;
   color: var(--text);
-  padding: 6px 8px;
+  padding: 7px 9px;
+  font-size: 13px;
+}
+
+.new-convo-form input:focus { border-color: var(--signal); }
+
+.new-convo-form button {
+  background: var(--signal);
+  color: #04140d;
+  border: none;
+  border-radius: 5px;
+  padding: 6px;
+  font-weight: 600;
   font-size: 12.5px;
+}
+
+.new-convo-form button:disabled { opacity: 0.6; }
+
+.sidebar-error {
+  color: var(--coral);
   font-family: var(--mono);
+  font-size: 11px;
+}
+
+.convo-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-empty {
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  padding: 12px;
+  text-align: center;
+}
+
+.convo-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 8px 10px;
+  text-align: left;
+  color: var(--text);
   width: 100%;
 }
 
-.presence-row { display: flex; align-items: center; gap: 6px; }
-.presence-row input { flex: 1; }
+.convo-item:hover { background: var(--panel-raised); }
 
-.presence-pill {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  padding: 3px 8px;
-  border-radius: 100px;
-  text-transform: lowercase;
-  white-space: nowrap;
+.convo-item.active {
+  background: var(--panel-raised);
+  border-color: var(--signal-dim);
 }
-.presence-pill.online { background: var(--signal-dim); color: var(--signal); }
-.presence-pill.offline { background: var(--line); color: var(--text-dim); }
 
-.my-id {
+.convo-type-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-dim);
+}
+.convo-type-dot.direct { background: var(--signal); }
+.convo-type-dot.group { background: #8a7dfa; }
+
+.convo-label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.convo-id {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12.5px;
+}
+
+.convo-type {
+  font-family: var(--mono);
+  font-size: 10px;
   color: var(--text-dim);
-  background: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  padding: 6px 8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-transform: lowercase;
+}
+
+.convo-date {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.sidebar-footer {
+  border-top: 1px solid var(--line);
+  padding: 10px 16px;
+}
+
+.me-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* ---- chat main / panel ---- */
+
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  position: relative;
+}
+
+.chat-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 /* ---- message log ---- */
@@ -288,6 +409,11 @@ input {
   font-family: var(--mono);
   font-size: 12.5px;
   margin: auto;
+}
+
+.log-empty.centered {
+  margin: auto;
+  text-align: center;
 }
 
 .log-line {
@@ -317,8 +443,6 @@ input {
 
 .log-content { color: var(--text); word-break: break-word; }
 
-.log-line.mine .log-content { color: var(--text); }
-
 .log-pending {
   color: var(--signal);
   font-size: 16px;
@@ -332,6 +456,16 @@ input {
   font-size: 11.5px;
   color: var(--text-dim);
   padding: 8px 0 2px;
+}
+
+.typing-indicator.floating {
+  position: absolute;
+  bottom: 62px;
+  left: 20px;
+  background: var(--panel-raised);
+  border: 1px solid var(--line);
+  border-radius: 100px;
+  padding: 5px 12px;
 }
 
 .typing-dots { display: inline-flex; gap: 3px; }
@@ -359,6 +493,7 @@ input {
   padding: 14px 20px;
   border-top: 1px solid var(--line);
   background: var(--panel);
+  flex-shrink: 0;
 }
 
 .composer input {
@@ -387,6 +522,6 @@ input {
 .composer button:disabled { opacity: 0.4; cursor: default; }
 
 @media (max-width: 640px) {
-  .session-bar { flex-direction: column; gap: 12px; }
+  .sidebar { width: 200px; }
   .log-time { display: none; }
 }

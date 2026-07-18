@@ -6,8 +6,6 @@ const WS_BASE = "ws://localhost:8082";
 // ---- small helpers -------------------------------------------------------
 
 function colorForUser(id) {
-  // deterministic hue from the user id, so the same sender always gets the
-  // same color across sessions without needing a lookup table
   let hash = 0;
   for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash);
   const hue = Math.abs(hash) % 360;
@@ -17,6 +15,11 @@ function colorForUser(id) {
 function formatTime(iso) {
   const d = new Date(iso);
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function formatDay(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
 async function api(path, options = {}) {
@@ -44,7 +47,7 @@ async function api(path, options = {}) {
 // ---- auth screen ----------------------------------------------------------
 
 function AuthScreen({ onAuthenticated }) {
-  const [mode, setMode] = useState("login"); // "login" | "register"
+  const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ username: "", email: "", password: "", full_name: "" });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -125,29 +128,119 @@ function AuthScreen({ onAuthenticated }) {
   );
 }
 
-// ---- main chat screen -------------------------------------------------------
+// ---- sidebar: conversation list + start-new form ---------------------------
 
-function ChatScreen({ token, user, onLogout }) {
-  const [conversationId, setConversationId] = useState(localStorage.getItem("relay_conv") || "");
-  const [connected, setConnected] = useState(false);
+function Sidebar({ token, user, activeId, onSelect, refreshKey, onCreated }) {
+  const [conversations, setConversations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showNewForm, setShowNewForm] = useState(false);
+  const [username, setUsername] = useState("");
+  const [error, setError] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  const loadConversations = useCallback(async () => {
+    try {
+      const res = await api("/conversations", { headers: { Authorization: `Bearer ${token}` } });
+      setConversations(res || []);
+    } catch (err) {
+      console.error("failed to load conversations:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations, refreshKey]);
+
+  const createConversation = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!username.trim()) return;
+    setCreating(true);
+    try {
+      const conv = await api("/conversations", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ type: "direct", usernames: [username.trim()] }),
+      });
+      setUsername("");
+      setShowNewForm(false);
+      await loadConversations();
+      onCreated(conv.id);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <aside className="sidebar">
+      <div className="sidebar-header">
+        <span className="sidebar-title">conversations</span>
+        <button className="icon-btn" onClick={() => setShowNewForm((s) => !s)} title="start a conversation">
+          {showNewForm ? "×" : "+"}
+        </button>
+      </div>
+
+      {showNewForm && (
+        <form className="new-convo-form" onSubmit={createConversation}>
+          <input
+            placeholder="username to message"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoFocus
+          />
+          <button type="submit" disabled={creating}>{creating ? "…" : "start"}</button>
+          {error && <div className="sidebar-error">{error}</div>}
+        </form>
+      )}
+
+      <div className="convo-list">
+        {loading && <div className="sidebar-empty">loading…</div>}
+        {!loading && conversations.length === 0 && (
+          <div className="sidebar-empty">no conversations yet — start one above</div>
+        )}
+        {conversations.map((c) => (
+          <button
+            key={c.id}
+            className={`convo-item ${c.id === activeId ? "active" : ""}`}
+            onClick={() => onSelect(c.id)}
+          >
+            <span className={`convo-type-dot ${c.type}`} />
+            <span className="convo-label">
+              <span className="convo-id">{c.id.slice(0, 8)}</span>
+              <span className="convo-type">{c.type}</span>
+            </span>
+            <span className="convo-date">{formatDay(c.created_at)}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="sidebar-footer">
+        <span className="me-line">
+          <span className="dot online pulse" />
+          {user.username}
+        </span>
+      </div>
+    </aside>
+  );
+}
+
+// ---- main chat panel -------------------------------------------------------
+
+function ChatPanel({ token, user, conversationId, onTypingEvent }) {
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
-  const [typingUsers, setTypingUsers] = useState({}); // userId -> timeout handle marker
-  const [presence, setPresence] = useState(null); // for a manually-checked peer id
-  const [peerCheckId, setPeerCheckId] = useState("");
   const [historyLoaded, setHistoryLoaded] = useState(false);
-
-  const wsRef = useRef(null);
   const logRef = useRef(null);
+  const wsRef = useRef(null);
   const typingTimeoutRef = useRef(null);
-
-  // persist the conversation id so a refresh doesn't lose it
-  useEffect(() => {
-    if (conversationId) localStorage.setItem("relay_conv", conversationId);
-  }, [conversationId]);
 
   const loadHistory = useCallback(async () => {
     if (!conversationId) return;
+    setHistoryLoaded(false);
     try {
       const res = await api(`/conversations/${conversationId}/messages`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -156,91 +249,77 @@ function ChatScreen({ token, user, onLogout }) {
       setMessages(
         list.map((m) => ({
           id: m.id,
-          conversationId: m.conversation_id,
           senderId: m.sender_id,
           content: m.content,
           createdAt: m.created_at,
         }))
       );
-      setHistoryLoaded(true);
     } catch (err) {
       console.error("failed to load history:", err);
+    } finally {
       setHistoryLoaded(true);
     }
   }, [conversationId, token]);
 
   useEffect(() => {
-    if (conversationId) loadHistory();
-  }, [conversationId, loadHistory]);
+    loadHistory();
+  }, [loadHistory]);
 
-  // ---- websocket lifecycle ----
-
-  const connect = useCallback(() => {
-    if (wsRef.current) wsRef.current.close();
+  // shared websocket connection, owned by the parent via a ref passed down
+  useEffect(() => {
     const ws = new WebSocket(`${WS_BASE}/ws?token=${encodeURIComponent(token)}`);
-
-    ws.onopen = () => setConnected(true);
-    ws.onclose = () => setConnected(false);
-    ws.onerror = () => setConnected(false);
+    wsRef.current = ws;
 
     ws.onmessage = (event) => {
       let parsed = null;
       try {
         parsed = JSON.parse(event.data);
-      } catch {
-        // plain-text chat content (current server behavior for chat messages)
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `local-${Date.now()}`,
-            conversationId,
-            senderId: "unknown",
-            content: event.data,
-            createdAt: new Date().toISOString(),
-          },
-        ]);
+      } catch (e) {
+        // Shouldn't happen once the backend always sends JSON envelopes.
+        // Left as a visible signal rather than silently swallowing it,
+        // so a backend regression is obvious instead of showing as
+        // mysterious missing messages.
+        console.warn("received non-JSON websocket payload:", event.data);
         return;
       }
 
       if (parsed.type === "typing") {
-        markTyping(parsed.user_id);
+        onTypingEvent(parsed.user_id);
+        return;
+      }
+
+      if (parsed.type === "message") {
+        // Our own messages are already rendered optimistically in send();
+        // this is just the hub echoing them back to our own connection.
+        if (parsed.sender_id === user.id) return;
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: parsed.id,
+            senderId: parsed.sender_id,
+            content: parsed.content,
+            createdAt: parsed.created_at,
+          },
+        ]);
       }
     };
 
-    wsRef.current = ws;
-  }, [token, conversationId]);
-
-  useEffect(() => {
-    connect();
-    return () => wsRef.current?.close();
+    return () => ws.close();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function markTyping(userId) {
-    setTypingUsers((prev) => ({ ...prev, [userId]: Date.now() }));
-    setTimeout(() => {
-      setTypingUsers((prev) => {
-        if (Date.now() - (prev[userId] || 0) < 2500) return prev;
-        const next = { ...prev };
-        delete next[userId];
-        return next;
-      });
-    }, 3000);
-  }
+  }, [token]);
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, typingUsers]);
+  }, [messages]);
 
   const send = () => {
     const text = draft.trim();
     if (!text || !conversationId || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    wsRef.current.send(
-      JSON.stringify({ type: "message", conversation_id: conversationId, content: text })
-    );
+    wsRef.current.send(JSON.stringify({ type: "message", conversation_id: conversationId, content: text }));
     setMessages((prev) => [
       ...prev,
-      { id: `local-${Date.now()}`, conversationId, senderId: user.id, content: text, createdAt: new Date().toISOString(), pending: true },
+      { id: `local-${Date.now()}`, senderId: user.id, content: text, createdAt: new Date().toISOString(), pending: true },
     ]);
     setDraft("");
   };
@@ -255,67 +334,18 @@ function ChatScreen({ token, user, onLogout }) {
     }, 2000);
   };
 
-  const checkPresence = async () => {
-    if (!peerCheckId) return;
-    try {
-      const res = await api(`/users/${peerCheckId}/presence`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setPresence(res.online);
-    } catch (err) {
-      setPresence(null);
-      console.error(err);
-    }
-  };
-
-  const typingList = Object.keys(typingUsers).filter((id) => id !== user.id);
+  if (!conversationId) {
+    return (
+      <div className="chat-panel">
+        <div className="log-empty centered">select a conversation, or start a new one</div>
+      </div>
+    );
+  }
 
   return (
-    <div className="chat-screen">
-      <header className="topbar">
-        <div className="topbar-left">
-          <span className={`dot ${connected ? "pulse online" : "offline"}`} />
-          <span className="brand-text">relay</span>
-          <span className="topbar-status">{connected ? "connected" : "disconnected"}</span>
-        </div>
-        <div className="topbar-right">
-          <span className="me">{user.username}</span>
-          <button className="ghost-btn" onClick={onLogout}>sign out</button>
-        </div>
-      </header>
-
-      <div className="session-bar">
-        <div className="session-field">
-          <label>conversation</label>
-          <input
-            value={conversationId}
-            onChange={(e) => setConversationId(e.target.value.trim())}
-            placeholder="paste conversation id"
-          />
-        </div>
-        <div className="session-field">
-          <label>check presence</label>
-          <div className="presence-row">
-            <input value={peerCheckId} onChange={(e) => setPeerCheckId(e.target.value.trim())} placeholder="user id" />
-            <button className="ghost-btn" onClick={checkPresence}>check</button>
-            {presence !== null && (
-              <span className={`presence-pill ${presence ? "online" : "offline"}`}>
-                {presence ? "online" : "offline"}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="session-field">
-          <label>my id</label>
-          <code className="my-id">{user.id}</code>
-        </div>
-      </div>
-
+    <div className="chat-panel">
       <main className="log" ref={logRef}>
-        {!conversationId && <div className="log-empty">enter a conversation id above to load messages</div>}
-        {conversationId && historyLoaded && messages.length === 0 && (
-          <div className="log-empty">no messages yet — say something</div>
-        )}
+        {historyLoaded && messages.length === 0 && <div className="log-empty">no messages yet — say something</div>}
         {messages.map((m) => {
           const mine = m.senderId === user.id;
           return (
@@ -329,12 +359,6 @@ function ChatScreen({ token, user, onLogout }) {
             </div>
           );
         })}
-        {typingList.length > 0 && (
-          <div className="typing-indicator">
-            {typingList.map((id) => id.slice(0, 8)).join(", ")} typing
-            <span className="typing-dots"><i /><i /><i /></span>
-          </div>
-        )}
       </main>
 
       <footer className="composer">
@@ -342,11 +366,76 @@ function ChatScreen({ token, user, onLogout }) {
           value={draft}
           onChange={onDraftChange}
           onKeyDown={(e) => e.key === "Enter" && send()}
-          placeholder={conversationId ? "write a message" : "set a conversation id first"}
-          disabled={!conversationId}
+          placeholder="write a message"
         />
-        <button onClick={send} disabled={!conversationId || !draft.trim()}>send</button>
+        <button onClick={send} disabled={!draft.trim()}>send</button>
       </footer>
+    </div>
+  );
+}
+
+// ---- chat screen: sidebar + panel, shared connection/typing state -----------
+
+function ChatScreen({ token, user, onLogout }) {
+  const [conversationId, setConversationId] = useState(null);
+  const [connected, setConnected] = useState(true); // panel owns its own socket; kept simple here
+  const [typingUsers, setTypingUsers] = useState({});
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleTypingEvent = (userId) => {
+    if (userId === user.id) return;
+    setTypingUsers((prev) => ({ ...prev, [userId]: Date.now() }));
+    setTimeout(() => {
+      setTypingUsers((prev) => {
+        if (Date.now() - (prev[userId] || 0) < 2500) return prev;
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+    }, 3000);
+  };
+
+  const typingList = Object.keys(typingUsers);
+
+  return (
+    <div className="chat-screen">
+      <header className="topbar">
+        <div className="topbar-left">
+          <span className="dot pulse online" />
+          <span className="brand-text">relay</span>
+        </div>
+        <div className="topbar-right">
+          <button className="ghost-btn" onClick={onLogout}>sign out</button>
+        </div>
+      </header>
+
+      <div className="chat-body">
+        <Sidebar
+          token={token}
+          user={user}
+          activeId={conversationId}
+          onSelect={setConversationId}
+          refreshKey={refreshKey}
+          onCreated={(id) => {
+            setConversationId(id);
+            setRefreshKey((k) => k + 1);
+          }}
+        />
+        <div className="chat-main">
+          <ChatPanel
+            token={token}
+            user={user}
+            conversationId={conversationId}
+            onTypingEvent={handleTypingEvent}
+          />
+          {typingList.length > 0 && (
+            <div className="typing-indicator floating">
+              {typingList.map((id) => id.slice(0, 8)).join(", ")} typing
+              <span className="typing-dots"><i /><i /><i /></span>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
